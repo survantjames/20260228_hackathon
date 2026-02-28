@@ -33,6 +33,7 @@ export interface Post {
   channel: string
   content: string
   timestamp: number
+  imageCid?: string
 }
 
 interface MessageItemProps {
@@ -72,9 +73,27 @@ export function MessageItem({ posts, isOwn }: MessageItemProps) {
         </div>
         {posts.map((post) => (
           <div key={post.cid} className="group/msg">
-            <p className="text-[13px] leading-relaxed text-message-other-foreground break-words">
-              {post.content}
-            </p>
+            {post.content && (
+              <p className="text-[13px] leading-relaxed text-message-other-foreground break-words">
+                {post.content}
+              </p>
+            )}
+            {post.imageCid && (
+              <a
+                href={`${GATEWAY}/ipfs/${post.imageCid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1.5 block"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`${GATEWAY}/ipfs/${post.imageCid}`}
+                  alt="attachment"
+                  className="max-w-xs rounded-lg border border-border object-cover"
+                  style={{ maxHeight: 300 }}
+                />
+              </a>
+            )}
             <a
               href={`${GATEWAY}/ipfs/${post.cid}`}
               target="_blank"

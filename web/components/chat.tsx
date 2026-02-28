@@ -39,14 +39,14 @@ export default function Chat({ channel }: { channel: string }) {
     setUsername(name)
   }
 
-  const send = async (text: string) => {
-    if (!text || sending || !username) return
+  const send = async (text: string, imageCid?: string) => {
+    if ((!text && !imageCid) || sending || !username) return
     setSending(true)
     try {
       await fetch('/api/posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ author: username, content: text, channel }),
+        body: JSON.stringify({ author: username, content: text, channel, imageCid }),
       })
     } catch {
       // silently fail — SSE will not deliver the message, user will notice
@@ -72,7 +72,7 @@ export default function Chat({ channel }: { channel: string }) {
         <ChannelHeader channel={channel} />
         <MessageList posts={posts} username={username} channel={channel} />
         <MessageComposer
-          onSend={send}
+          onSend={(text, imageCid) => send(text, imageCid)}
           disabled={!username}
           sending={sending}
           placeholder={
