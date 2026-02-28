@@ -26,11 +26,11 @@ resource "aws_security_group" "ipfs" {
   description = "IPFS node security group"
 
   ingress {
-    description = "IPFS API (restricted to your IP)"
+    description = "IPFS API (open)"
     from_port   = 5001
     to_port     = 5001
     protocol    = "tcp"
-    cidr_blocks = [var.my_ip_cidr]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
