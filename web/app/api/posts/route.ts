@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import store from '@/lib/store'
-import { uploadJSON, pubsubPublish } from '@/lib/ipfs'
+import { uploadJSON, mfsWriteMessage, mfsListMessages, mfsReadMessage } from '@/lib/ipfs'
+import type { Post } from '@/lib/store'
 
 export async function GET(request: NextRequest) {
   const channel = request.nextUrl.searchParams.get('channel') ?? 'general'
-  return NextResponse.json(store.getByChannel(channel))
+  try {
+    const entries = await mfsListMessages(channel)
+    const posts = await Promise.all(
+      entries.map(async ({ name }) => {
+        const raw = await mfsReadMessage(channel, name)
+        return JSON.parse(raw) as Post
+      })
+    )
+    return NextResponse.json(posts.sort((a, b) => a.timestamp - b.timestamp).slice(-200))
+  } catch {
+    return NextResponse.json(store.getByChannel(channel))
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -24,12 +36,12 @@ export async function POST(request: NextRequest) {
   }
 
   const stored = { ...post, cid }
-
-  // Store locally (deduped by CID) and publish to shared IPFS pubsub.
-  // All other dev servers subscribed to the same EC2 IPFS node will receive this.
   store.add(stored)
-  pubsubPublish(`ipfs-chat:${channel}`, stored).catch(err =>
-    console.warn('pubsub publish failed (pubsub may not be enabled):', err)
+
+  // Write to shared MFS so the other machine's polling picks it up
+  const filename = `${post.timestamp}-${cid}`
+  mfsWriteMessage(channel, filename, stored).catch(err =>
+    console.warn('MFS write failed:', err)
   )
 
   return NextResponse.json(stored, { status: 201 })

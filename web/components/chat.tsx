@@ -30,7 +30,10 @@ export default function Chat({ channel }: { channel: string }) {
   // SSE: stream new posts in real-time
   useEffect(() => {
     const es = new EventSource(`/api/feed?channel=${encodeURIComponent(channel)}`)
-    es.onmessage = (e) => setPosts((prev) => [...prev, JSON.parse(e.data) as Post])
+    es.onmessage = (e) => {
+      const post = JSON.parse(e.data) as Post
+      setPosts((prev) => prev.some(p => p.cid === post.cid) ? prev : [...prev, post])
+    }
     return () => es.close()
   }, [channel])
 

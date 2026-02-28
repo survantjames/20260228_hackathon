@@ -1,4 +1,5 @@
 const API = (process.env.IPFS_API_URL ?? 'http://localhost:5001').replace(/\/$/, '')
+const MFS_CHAT_DIR = '/ipfs-chat'
 
 export async function uploadJSON(data: object): Promise<string> {
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
@@ -37,47 +38,35 @@ export async function pubsubPublish(topic: string, data: object): Promise<void> 
   if (!resp.ok) throw new Error(`IPFS pubsub publish failed: ${resp.status}`)
 }
 
-/**
- * Subscribe to an IPFS pubsub topic.
- * Yields decoded message strings as they arrive.
- * Stops when the provided AbortSignal fires.
- */
-export async function* pubsubSubscribe(
-  topic: string,
-  signal: AbortSignal
-): AsyncGenerator<string> {
+/** Write a message JSON to a shared MFS path so all machines on the same IPFS node can read it. */
+export async function mfsWriteMessage(channel: string, filename: string, post: object): Promise<void> {
+  const path = `${MFS_CHAT_DIR}/${channel}/${filename}`
   const resp = await fetch(
-    `${API}/api/v0/pubsub/sub?arg=${encodeURIComponent(topic)}`,
-    { method: 'POST', signal }
+    `${API}/api/v0/files/write?arg=${encodeURIComponent(path)}&create=true&parents=true`,
+    { method: 'POST', body: JSON.stringify(post) }
   )
-  if (!resp.ok) throw new Error(`IPFS pubsub subscribe failed: ${resp.status}`)
+  if (!resp.ok) throw new Error(`MFS write failed: ${resp.status}`)
+}
 
-  const reader = resp.body!.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
+/** List all message filenames in the MFS channel directory. Returns [] if directory doesn't exist yet. */
+export async function mfsListMessages(channel: string): Promise<{ name: string }[]> {
+  const path = `${MFS_CHAT_DIR}/${channel}`
+  const resp = await fetch(
+    `${API}/api/v0/files/ls?arg=${encodeURIComponent(path)}`,
+    { method: 'POST' }
+  )
+  if (!resp.ok) return []
+  const data = await resp.json()
+  return (data.Entries ?? []) as { name: string }[]
+}
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()!
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        try {
-          const msg = JSON.parse(trimmed)
-          // IPFS pubsub data is base64url encoded
-          yield Buffer.from(msg.data, 'base64url').toString('utf-8')
-        } catch {
-          // skip malformed lines
-        }
-      }
-    }
-  } finally {
-    reader.cancel().catch(() => {})
-  }
+/** Read the raw JSON content of a message file from MFS. */
+export async function mfsReadMessage(channel: string, filename: string): Promise<string> {
+  const path = `${MFS_CHAT_DIR}/${channel}/${filename}`
+  const resp = await fetch(
+    `${API}/api/v0/files/read?arg=${encodeURIComponent(path)}`,
+    { method: 'POST' }
+  )
+  if (!resp.ok) throw new Error(`MFS read failed: ${resp.status}`)
+  return resp.text()
 }
