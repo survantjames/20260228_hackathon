@@ -19,6 +19,9 @@ sudo -u ubuntu IPFS_PATH=/home/ubuntu/.ipfs ipfs config Addresses.Gateway /ip4/0
 sudo -u ubuntu IPFS_PATH=/home/ubuntu/.ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin '["*"]'
 sudo -u ubuntu IPFS_PATH=/home/ubuntu/.ipfs ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods '["PUT","POST","GET"]'
 
+# Enable pubsub for real-time cross-machine chat
+sudo -u ubuntu IPFS_PATH=/home/ubuntu/.ipfs ipfs config --json Pubsub.Enabled true
+
 # Systemd service
 cat > /etc/systemd/system/ipfs.service <<'UNIT'
 [Unit]
@@ -28,7 +31,7 @@ After=network.target
 [Service]
 User=ubuntu
 Environment=IPFS_PATH=/home/ubuntu/.ipfs
-ExecStart=/usr/local/bin/ipfs daemon
+ExecStart=/usr/local/bin/ipfs daemon --enable-pubsub-experiment
 Restart=on-failure
 RestartSec=5
 
