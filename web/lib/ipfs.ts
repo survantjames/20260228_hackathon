@@ -41,9 +41,11 @@ export async function pubsubPublish(topic: string, data: object): Promise<void> 
 /** Write a message JSON to a shared MFS path so all machines on the same IPFS node can read it. */
 export async function mfsWriteMessage(channel: string, filename: string, post: object): Promise<void> {
   const path = `${MFS_CHAT_DIR}/${channel}/${filename}`
+  const form = new FormData()
+  form.append('file', new Blob([JSON.stringify(post)], { type: 'application/json' }), 'post.json')
   const resp = await fetch(
     `${API}/api/v0/files/write?arg=${encodeURIComponent(path)}&create=true&parents=true`,
-    { method: 'POST', body: JSON.stringify(post) }
+    { method: 'POST', body: form }
   )
   if (!resp.ok) throw new Error(`MFS write failed: ${resp.status}`)
 }
