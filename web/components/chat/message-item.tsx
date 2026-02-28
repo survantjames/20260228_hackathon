@@ -4,6 +4,11 @@ import { cn } from "@/lib/utils"
 
 const GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? "http://localhost:8080"
 
+// Proxy through Next.js to avoid CORS issues with the IPFS gateway
+function ipfsImgSrc(cid: string) {
+  return `/api/ipfs/${cid}`
+}
+
 const AVATAR_COLORS = [
   "#5865f2", "#eb459e", "#57f287", "#fee75c", "#ed4245", "#00b0f4",
 ]
@@ -87,7 +92,7 @@ export function MessageItem({ posts, isOwn }: MessageItemProps) {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`${GATEWAY}/ipfs/${post.imageCid}`}
+                  src={ipfsImgSrc(post.imageCid)}
                   alt="attachment"
                   className="max-w-xs rounded-lg border border-border object-cover"
                   style={{ maxHeight: 300 }}

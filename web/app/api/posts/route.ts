@@ -36,13 +36,17 @@ export async function POST(request: NextRequest) {
   }
 
   const stored = { ...post, cid }
-  store.add(stored)
 
-  // Write to shared MFS so the other machine's polling picks it up
+  // Write to shared MFS *before* emitting — ensures message survives refresh
   const filename = `${post.timestamp}-${cid}`
-  mfsWriteMessage(channel, filename, stored).catch(err =>
+  try {
+    await mfsWriteMessage(channel, filename, stored)
+  } catch (err) {
     console.warn('MFS write failed:', err)
-  )
+    // Non-fatal: still deliver via in-memory store so the sender sees it
+  }
+
+  store.add(stored)
 
   return NextResponse.json(stored, { status: 201 })
 }
