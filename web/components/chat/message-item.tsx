@@ -39,6 +39,7 @@ export interface Post {
   content: string
   timestamp: number
   imageCid?: string
+  pending?: boolean  // optimistic — not yet confirmed by server
 }
 
 interface MessageItemProps {
@@ -48,9 +49,13 @@ interface MessageItemProps {
 
 export function MessageItem({ posts, isOwn }: MessageItemProps) {
   const first = posts[0]
+  const isPending = posts.every(p => p.pending)
 
   return (
-    <div className="group flex gap-2.5 px-4 py-2 hover:bg-accent/30 transition-colors rounded-lg mx-2">
+    <div className={cn(
+      "group flex gap-2.5 px-4 py-2 hover:bg-accent/30 transition-colors rounded-lg mx-2",
+      isPending && "opacity-60"
+    )}>
       {/* Avatar */}
       <div className="shrink-0 pt-0.5">
         <div
@@ -73,7 +78,7 @@ export function MessageItem({ posts, isOwn }: MessageItemProps) {
             {first.author}
           </span>
           <span className="text-[10px] text-muted-foreground">
-            {formatTime(first.timestamp)}
+            {isPending ? 'sending…' : formatTime(first.timestamp)}
           </span>
         </div>
         {posts.map((post) => (

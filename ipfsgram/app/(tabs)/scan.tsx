@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Alert,
   ActivityIndicator,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { getProfile, addFollowing } from '../../lib/storage';
@@ -16,6 +17,23 @@ export default function ScanScreen() {
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [webCameraReady, setWebCameraReady] = useState(false);
+
+  const handleGrantPermission = async () => {
+    if (Platform.OS === 'web') {
+      try {
+        // Directly call getUserMedia to trigger the browser's native permission dialog
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Stop immediately — CameraView will acquire it on render
+        stream.getTracks().forEach(t => t.stop());
+        setWebCameraReady(true);
+      } catch {
+        Alert.alert('Permission Denied', 'Camera access was denied by the browser.');
+      }
+    } else {
+      requestPermission();
+    }
+  };
 
   if (!permission) {
     return (
@@ -25,11 +43,11 @@ export default function ScanScreen() {
     );
   }
 
-  if (!permission.granted) {
+  if (!permission.granted && !webCameraReady) {
     return (
       <View style={styles.center}>
         <Text style={styles.message}>Camera access is needed to scan QR codes.</Text>
-        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+        <TouchableOpacity style={styles.button} onPress={handleGrantPermission}>
           <Text style={styles.buttonText}>Grant Permission</Text>
         </TouchableOpacity>
       </View>

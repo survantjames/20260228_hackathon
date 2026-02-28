@@ -5,6 +5,10 @@ import { mfsListMessages, mfsReadMessage } from '@/lib/ipfs'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const POLL_INTERVAL = 2_000    // MFS poll every 2s
+const HEARTBEAT_INTERVAL = 15_000  // keep-alive comment every 15s
+const MAX_DURATION = 50_000    // graceful close before Vercel function timeout; client auto-reconnects
+
 export async function GET(request: NextRequest) {
   const channel = request.nextUrl.searchParams.get('channel') ?? 'general'
   const encoder = new TextEncoder()
@@ -12,31 +16,44 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Local EventEmitter — gives the sender immediate feedback without waiting for the next poll
+      const enqueue = (data: string) => {
+        try { controller.enqueue(encoder.encode(data)) } catch {}
+      }
+
+      // Local EventEmitter — same-process fast path (works in dev, not on multi-instance Vercel)
       const onPost = (post: Post) => {
         if (post.channel !== channel || seen.has(post.cid)) return
         seen.add(post.cid)
-        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(post)}\n\n`)) } catch {}
+        enqueue(`data: ${JSON.stringify(post)}\n\n`)
       }
       store.on('post', onPost)
 
-      // Snapshot existing MFS entries so we don't re-deliver history that GET /api/posts already returned
+      // Snapshot existing MFS entries so we don't re-deliver history
       try {
         const existing = await mfsListMessages(channel)
-        for (const { name } of existing) {
-          const cid = name.slice(name.indexOf('-') + 1)
-          seen.add(cid)
-        }
+        for (const { name } of existing) seen.add(name.slice(name.indexOf('-') + 1))
       } catch {}
 
-      // Poll MFS every 2 seconds — picks up messages written by other machines
-      while (!request.signal.aborted) {
+      // Send initial heartbeat so the browser knows the connection is alive
+      enqueue(': heartbeat\n\n')
+
+      const startTime = Date.now()
+      let lastHeartbeat = Date.now()
+
+      while (!request.signal.aborted && Date.now() - startTime < MAX_DURATION) {
         await new Promise<void>(resolve => {
-          const timer = setTimeout(resolve, 2000)
+          const timer = setTimeout(resolve, POLL_INTERVAL)
           request.signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
         })
         if (request.signal.aborted) break
 
+        // Keep-alive heartbeat
+        if (Date.now() - lastHeartbeat >= HEARTBEAT_INTERVAL) {
+          enqueue(': heartbeat\n\n')
+          lastHeartbeat = Date.now()
+        }
+
+        // Poll MFS for messages from other machines
         try {
           const entries = await mfsListMessages(channel)
           for (const { name } of entries) {
@@ -47,7 +64,7 @@ export async function GET(request: NextRequest) {
               const post = JSON.parse(raw) as Post
               store.add(post)
               seen.add(cid)
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(post)}\n\n`))
+              enqueue(`data: ${JSON.stringify(post)}\n\n`)
             } catch {}
           }
         } catch (err) {
@@ -56,6 +73,8 @@ export async function GET(request: NextRequest) {
       }
 
       store.off('post', onPost)
+      // Send retry hint so client reconnects quickly after our graceful close
+      enqueue('retry: 1000\n\n')
       try { controller.close() } catch {}
     },
   })
@@ -65,6 +84,7 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'X-Accel-Buffering': 'no',
+      'Connection': 'keep-alive',
     },
   })
 }

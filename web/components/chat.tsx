@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChannelSidebar } from './chat/channel-sidebar'
 import { ChannelHeader } from './chat/channel-header'
 import { MessageList } from './chat/message-list'
@@ -13,6 +13,7 @@ export default function Chat({ channel }: { channel: string }) {
   const [posts, setPosts] = useState<Post[]>([])
   const [username, setUsername] = useState('')
   const [sending, setSending] = useState(false)
+  const closedRef = useRef(false)
 
   // Load username from localStorage
   useEffect(() => {
@@ -27,14 +28,37 @@ export default function Chat({ channel }: { channel: string }) {
       .then((data) => Array.isArray(data) && setPosts(data))
   }, [channel])
 
-  // SSE: stream new posts in real-time
+  // SSE: stream new posts in real-time, auto-reconnect on disconnect
   useEffect(() => {
-    const es = new EventSource(`/api/feed?channel=${encodeURIComponent(channel)}`)
-    es.onmessage = (e) => {
-      const post = JSON.parse(e.data) as Post
-      setPosts((prev) => prev.some(p => p.cid === post.cid) ? prev : [...prev, post])
+    closedRef.current = false
+    let es: EventSource | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      if (closedRef.current) return
+      es = new EventSource(`/api/feed?channel=${encodeURIComponent(channel)}`)
+
+      es.onmessage = (e) => {
+        const post = JSON.parse(e.data) as Post
+        setPosts((prev) => prev.some((p) => p.cid === post.cid) ? prev : [...prev, post])
+      }
+
+      es.onerror = () => {
+        es?.close()
+        es = null
+        if (!closedRef.current) {
+          retryTimer = setTimeout(connect, 3000)
+        }
+      }
     }
-    return () => es.close()
+
+    connect()
+
+    return () => {
+      closedRef.current = true
+      if (retryTimer) clearTimeout(retryTimer)
+      es?.close()
+    }
   }, [channel])
 
   const saveUsername = (name: string) => {
@@ -45,14 +69,35 @@ export default function Chat({ channel }: { channel: string }) {
   const send = async (text: string, imageCid?: string) => {
     if ((!text && !imageCid) || sending || !username) return
     setSending(true)
+
+    // Optimistic post — show immediately while the request is in-flight
+    const tempCid = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const optimisticPost: Post = {
+      cid: tempCid,
+      author: username,
+      channel,
+      content: text,
+      timestamp: Date.now(),
+      ...(imageCid ? { imageCid } : {}),
+      pending: true,
+    }
+    setPosts((prev) => [...prev, optimisticPost])
+
     try {
-      await fetch('/api/posts', {
+      const res = await fetch('/api/posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ author: username, content: text, channel, imageCid }),
       })
+      if (res.ok) {
+        const realPost = await res.json() as Post
+        // Replace optimistic placeholder with confirmed post
+        setPosts((prev) => prev.map((p) => p.cid === tempCid ? realPost : p))
+      } else {
+        setPosts((prev) => prev.filter((p) => p.cid !== tempCid))
+      }
     } catch {
-      // silently fail — SSE will not deliver the message, user will notice
+      setPosts((prev) => prev.filter((p) => p.cid !== tempCid))
     } finally {
       setSending(false)
     }
