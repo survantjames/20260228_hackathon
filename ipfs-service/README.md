@@ -19,7 +19,7 @@ Wait ~2 minutes for the EC2 instance to finish installing IPFS.
 
 ```bash
 pip install -r requirements.txt
-python upload.py http://$(cd terraform && terraform output -raw public_ip):5001 myfile.pdf
+python upload.py http://44.234.6.138:5001 myfile.pdf
 ```
 
 This uploads the file to your IPFS node and saves a `myfile_qr.png` in the current directory. Show the QR code to someone and they can download the file.
