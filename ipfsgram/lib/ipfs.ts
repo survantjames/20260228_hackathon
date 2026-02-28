@@ -95,7 +95,7 @@ export async function resolveIpns(
 ): Promise<string> {
   const res = await withTimeout(
     fetch(
-      `${apiBase(apiUrl)}/api/v0/name/resolve?arg=${encodeURIComponent(ipnsKeyId)}`,
+      `${apiBase(apiUrl)}/api/v0/name/resolve?arg=${encodeURIComponent(ipnsKeyId)}&nocache=true`,
       { method: 'POST' },
     ),
     30000,
