@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IPFS Upload",
-  description: "Upload files to your IPFS node",
+  title: "IPFS Chat",
+  description: "Decentralized chat powered by IPFS",
 };
 
 export default function RootLayout({
