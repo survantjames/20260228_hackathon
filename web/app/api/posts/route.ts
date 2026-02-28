@@ -7,14 +7,28 @@ export async function GET(request: NextRequest) {
   const channel = request.nextUrl.searchParams.get('channel') ?? 'general'
   try {
     const entries = await mfsListMessages(channel)
-    const posts = await Promise.all(
+    // allSettled: a single bad read never wipes out all history
+    const results = await Promise.allSettled(
       entries.map(async ({ name }) => {
         const raw = await mfsReadMessage(channel, name)
         return JSON.parse(raw) as Post
       })
     )
-    return NextResponse.json(posts.sort((a, b) => a.timestamp - b.timestamp).slice(-200))
-  } catch {
+    const posts = results
+      .filter((r): r is PromiseFulfilledResult<Post> => r.status === 'fulfilled')
+      .map(r => r.value)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-200)
+
+    // Seed in-memory store so same-instance SSE polling deduplicates correctly
+    for (const post of posts) store.add(post)
+
+    return NextResponse.json(posts)
+  } catch (err) {
+    // mfsListMessages threw — IPFS is genuinely unreachable
+    console.error('History load failed:', err)
+    // Return whatever is in the warm in-memory store (non-empty if this instance
+    // already served a successful load) rather than an empty array
     return NextResponse.json(store.getByChannel(channel))
   }
 }

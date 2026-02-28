@@ -50,14 +50,24 @@ export async function mfsWriteMessage(channel: string, filename: string, post: o
   if (!resp.ok) throw new Error(`MFS write failed: ${resp.status}`)
 }
 
-/** List all message filenames in the MFS channel directory. Returns [] if directory doesn't exist yet. */
+/** List all message filenames in the MFS channel directory.
+ *  Returns [] if the directory doesn't exist yet.
+ *  Throws if the IPFS API is unreachable or returns an unexpected error. */
 export async function mfsListMessages(channel: string): Promise<{ name: string }[]> {
   const path = `${MFS_CHAT_DIR}/${channel}`
-  const resp = await fetch(
-    `${API}/api/v0/files/ls?arg=${encodeURIComponent(path)}`,
-    { method: 'POST' }
-  )
-  if (!resp.ok) return []
+  let resp: Response
+  try {
+    resp = await fetch(`${API}/api/v0/files/ls?arg=${encodeURIComponent(path)}`, { method: 'POST' })
+  } catch (err) {
+    throw new Error(`IPFS API unreachable: ${err}`)
+  }
+  if (resp.status === 500) {
+    // Kubo returns 500 with a text body when the path doesn't exist — treat as empty
+    const body = await resp.text()
+    if (body.includes('does not exist') || body.includes('no link named')) return []
+    throw new Error(`MFS ls error: ${body}`)
+  }
+  if (!resp.ok) throw new Error(`MFS ls HTTP ${resp.status}`)
   const data = await resp.json()
   return (data.Entries ?? []) as { name: string }[]
 }
